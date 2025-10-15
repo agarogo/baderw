@@ -7,7 +7,7 @@ from app.routers import quizes
 from app.routers.all_routers import api_router
 from app.db.database import engine, Base, AsyncSessionLocal
 from app.crud import init_tree_catalog
-
+from app.routers import quizes 
 from dotenv import load_dotenv
 import os
 
@@ -24,7 +24,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Настройка CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -39,3 +39,13 @@ async def create_all():
 
     async with AsyncSessionLocal() as db:
         await init_tree_catalog(db)
+
+@app.get("/healthz")
+def healthz():
+  return {"ok": True}
+
+app.include_router(quizes.router)
+
+if __name__ == "__main__":
+  import uvicorn
+  uvicorn.run("app.main:app", host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
