@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-
+from app.routers import quizes
 from app.routers.all_routers import api_router
 from app.db.database import engine, Base, AsyncSessionLocal
 from app.crud import init_tree_catalog
@@ -17,7 +17,7 @@ REDIS_URL = os.getenv("REDIS_URL")
 limiter = Limiter(key_func=get_remote_address, default_limits=["100 per minute"]) 
 
 app = FastAPI(swagger_ui_parameters={"oauth2RedirectUrl": None})
-
+app.include_router(quizes.router)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 

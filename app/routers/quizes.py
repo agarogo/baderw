@@ -1,51 +1,35 @@
 # app/routers/quizes.py
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
-from app.db.database import get_db
 from app.dependencies import get_current_user
-from app.models.users import User
-from app.models.questions import Question
-from app.schemas.quizes import QuizSubmission, QuizResult
+from app.db import get_db
+from app.models import User
 
-router = APIRouter(prefix="/quizes", tags=["quizes"])
-limiter = Limiter(key_func=get_remote_address)
+router = APIRouter()
 
-@router.get("/questions/")
-async def get_questions(
-    skip: int = 0, 
-    limit: int = 25,
-    db: AsyncSession = Depends(get_db)
+class GameResultIn(BaseModel):
+    score: int
+    duration_sec: int
+
+def compute_award(score: int, duration_sec: int) -> int:
+    # базовая формула: 2 монеты за очко, + бонус за скорость
+    base = max(0, score) * 2
+    speed = 0
+    if duration_sec > 0:
+        speed = min(base // 2, max(0, (score * 10) // max(1, duration_sec // 10)))
+    return max(0, base + speed)
+
+@router.post("/quizes/games/result")
+def post_game_result(
+    payload: GameResultIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
-    result = await db.execute(
-        select(Question).offset(skip).limit(limit)
-    )
-    return result.scalars().all()
-
-@router.post("/submit/", response_model=QuizResult)
-async def submit_quiz(
-    submission: QuizSubmission,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    result = await db.execute(
-        select(Question).offset(submission.skip).limit(submission.limit)
-    )
-    questions = result.scalars().all()
-
-    if not questions:
-        raise HTTPException(status_code=404, detail="Вопросы не найдены")
-
-    correct_count = 0
-    for question in questions:
-        user_answer = submission.answers.get(str(question.id))
-        if user_answer == question.correct_answer:
-            correct_count += 1
-
-    return QuizResult(
-        score=correct_count,
-        user_id=current_user.id
-    )
+    awarded = compute_award(payload.score, payload.duration_sec)
+    user.coins = (user.coins or 0) + awarded
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return {"ok": True, "awarded": awarded, "coins": user.coins}
