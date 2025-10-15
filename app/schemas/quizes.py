@@ -1,29 +1,43 @@
-# app/routers/quizes.py
-from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
-from app.dependencies import get_current_user
-from app.db import get_db
-from app.models import User
+from typing import Optional, List, Dict
 
-router = APIRouter()
+# ----- QUESTION -----
+class QuestionBase(BaseModel):
+    question_text: str
+    correct_answer: str
+    option1: str
+    option2: str
+    option3: str
 
-class GameResultIn(BaseModel):
-  score: int
-  duration_sec: int
+class QuestionCreate(QuestionBase):
+    pass
 
-def compute_award(score: int, duration_sec: int) -> int:
-  base = max(0, score) * 2
-  speed = 0
-  if duration_sec > 0:
-    speed = min(base // 2, (score * 10) // max(1, duration_sec // 10))
-  return max(0, base + speed)
+class Question(QuestionBase):
+    id: int
 
-@router.post("/quizes/games/result")
-def post_game_result(payload: GameResultIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-  awarded = compute_award(payload.score, payload.duration_sec)
-  user.coins = (user.coins or 0) + awarded
-  db.add(user)
-  db.commit()
-  db.refresh(user)
-  return {"ok": True, "awarded": awarded, "coins": user.coins}
+    class Config:
+        from_attributes = True
+
+# ----- QUIZ RESULT -----
+class QuizResultCreate(BaseModel):
+    score: int
+    total_questions: int
+
+class QuizResult(BaseModel):
+    id: Optional[int] = None
+    user_id: Optional[int] = None
+    score: int
+
+    class Config:
+        from_attributes = True
+
+# ----- QUIZ SUBMISSION -----
+class QuizSubmission(BaseModel):
+    answers: Dict[str, str]
+    test_type: int
+    skip: int
+    limit: int
+    
+class UserRating(BaseModel):
+    nickname: str
+    avg_percentage: float

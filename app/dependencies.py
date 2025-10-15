@@ -1,38 +1,27 @@
 # app/dependencies.py
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy.orm import Session
-from jose import JWTError
-from app.core.security import decode_token
-from app.db import get_db           # твоя функция выдаёт Session
-from app.models import User         # твоя ORM-модель
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.db.database import get_db
+from app.auth import verify_token
+from app.crud import get_user_by_email
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
-cred_exc = HTTPException(
-  status_code=status.HTTP_401_UNAUTHORIZED,
-  detail="Could not validate credentials",
-  headers={"WWW-Authenticate": "Bearer"},
-)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
 
-def get_current_user(token: str | None = Depends(oauth2_scheme),
-                     db: Session = Depends(get_db)) -> User:
-  if not token:
-    raise cred_exc
-  try:
-    data = decode_token(token)      # {"sub": str|int, "exp": int}
-    sub = data["sub"]
-    user: User | None = None
-
-    if isinstance(sub, int):
-      user = db.query(User).get(sub)  # id
-    else:
-      if "@" in sub:
-        user = db.query(User).filter(User.email_user == sub).first()  # email
-      else:
-        user = db.query(User).filter(User.nickname == sub).first()    # запасной вариант
-
-    if not user:
-      raise cred_exc
+async def get_current_user(
+    token: str = Depends(oauth2_scheme), 
+    db: AsyncSession = Depends(get_db)
+):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    token_data = verify_token(token)
+    if token_data is None:
+        raise credentials_exception
+    
+    user = await get_user_by_email(db, email=token_data.email)
+    if user is None or not user.is_active:
+        raise credentials_exception
     return user
-  except JWTError:
-    raise cred_exc
